@@ -49,10 +49,19 @@ async def lifespan(app: FastAPI):
     # ngrok 터널 시작 (설정된 경우)
     if settings.NGROK_ENABLED and settings.NGROK_AUTH_TOKEN:
         try:
-            from pyngrok import ngrok
+            from pyngrok import ngrok, conf
             ngrok.set_auth_token(settings.NGROK_AUTH_TOKEN)
-            tunnel = ngrok.connect(settings.API_PORT)
-            logger.info(f"ngrok 터널: {tunnel.public_url}")
+
+            # 커스텀 도메인 사용
+            if settings.NGROK_DOMAIN:
+                tunnel = ngrok.connect(
+                    settings.API_PORT,
+                    hostname=settings.NGROK_DOMAIN
+                )
+                logger.info(f"ngrok 터널 (커스텀 도메인): https://{settings.NGROK_DOMAIN}")
+            else:
+                tunnel = ngrok.connect(settings.API_PORT)
+                logger.info(f"ngrok 터널: {tunnel.public_url}")
         except Exception as e:
             logger.warning(f"ngrok 터널 시작 실패: {e}")
 

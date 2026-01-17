@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # ngrok 설정
     NGROK_AUTH_TOKEN: Optional[str] = None
     NGROK_ENABLED: bool = False
+    NGROK_DOMAIN: Optional[str] = None  # 커스텀 도메인 (예: blockpass.ngrok.app)
 
     # DB 설정 (ngrok URL로 연결)
     DB_NGROK_URL: Optional[str] = None
