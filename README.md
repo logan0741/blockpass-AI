@@ -2,6 +2,46 @@
 
 헬스장, 공부방, 독서실 등의 계약 문서를 사진 기반으로 디지털화하는 AI 서비스입니다.
 
+## 최근 작업 요약
+
+이 저장소에서 OCR 테스트 데이터 생성/시각화, 경량 학습, 결과 JSON 후처리까지 구성했습니다.
+
+### 1) Test 데이터 생성 및 시각화
+
+- 원본 이미지, 박스 시각화, 마스크, 분석 JSON을 `Test/Number */` 구조로 생성
+- 라벨 JSON은 `*_label.json`으로 함께 저장
+
+관련 스크립트:
+- `scripts/extract_and_prepare.py`
+- `scripts/cross_convolution_analyzer.py`
+
+### 2) 경량 학습(LoRA/QLoRA)
+
+- GPU 메모리 절감을 위해 QLoRA(4bit) + LoRA 적용
+- 이미지 토큰 수를 줄이기 위해 `min_pixels/max_pixels` 제한
+
+관련 스크립트:
+- `scripts/cross_convolution_trainer.py`
+- `init/train.sh`
+
+### 3) 결과 JSON 후처리
+
+- `full_text`는 줄바꿈 기준 전체 텍스트 보존
+- `sections`는 키워드 가중치로 문맥 분리
+- 나머지 필드는 규칙 기반으로 채움
+
+출력 경로:
+- `Test/results/images`
+- `Test/results/json`
+
+관련 스크립트:
+- `scripts/run_ocr_structured.py`
+
+### 4) Git 푸시 관련
+
+- 대용량 파일(모델/학습 결과/테스트 데이터)은 `.gitignore`로 제외
+- 코드/스크립트만 원격에 푸시하는 방식으로 정리
+
 ## 모델 정보
 
 - **모델**: [fasoo/Qwen2-VL-7B-Instruct-KoDocOCR](https://huggingface.co/fasoo/Qwen2-VL-7B-Instruct-KoDocOCR)
