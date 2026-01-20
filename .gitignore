@@ -35,6 +35,13 @@ env/
 # 모델 파일 (용량이 크므로 제외)
 models/
 
+# Generated data and training outputs
+outputs/
+init/training_output/
+init/model_weights/
+Test/
+data/custom_prepared/
+
 # IDE
 .idea/
 .vscode/
