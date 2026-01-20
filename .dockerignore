@@ -1,0 +1,14 @@
+.git
+.gitignore
+ocr_env
+outputs
+Test
+test_results
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.tmp
+*.swp
+*.swo

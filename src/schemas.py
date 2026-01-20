@@ -35,21 +35,33 @@ class OCRRequest(BaseModel):
     custom_prompt: Optional[str] = Field(None, description="커스텀 프롬프트 (선택)")
 
 
-class OCRResponse(BaseModel):
-    """OCR 응답 스키마"""
-    document_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    company_type: CompanyType
-    raw_text: str = Field(..., description="OCR 전체 텍스트")
-    extracted_fields: ExtractedFields = Field(default_factory=ExtractedFields)
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="신뢰도 점수")
-    schema_version: str = Field(default="1.0.0", description="스키마 버전")
-    created_at: datetime = Field(default_factory=datetime.now)
-    processing_time_ms: Optional[float] = Field(None, description="처리 시간 (ms)")
+class RefundRule(BaseModel):
+    days: int
+    percent: int
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+
+class Sections(BaseModel):
+    header: str = ""
+    business: str = ""
+    period: str = ""
+    payment: str = ""
+    refund: str = ""
+    terms: str = ""
+
+
+class StructuredOCRResponse(BaseModel):
+    success: bool = False
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    business_name: Optional[str] = None
+    service_type: str = "other"
+    duration_days: Optional[int] = None
+    amount_krw: Optional[int] = None
+    eth_ratio_business: Optional[int] = None
+    eth_ratio_escrow: Optional[int] = None
+    protection_days: Optional[int] = None
+    refund_rules: List[RefundRule] = Field(default_factory=list)
+    full_text: str = ""
+    sections: Sections = Field(default_factory=Sections)
 
 
 class HealthResponse(BaseModel):

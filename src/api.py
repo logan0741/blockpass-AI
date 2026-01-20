@@ -6,15 +6,14 @@ from fastapi.responses import JSONResponse
 
 from .schemas import (
     OCRRequest,
-    OCRResponse,
+    StructuredOCRResponse,
     HealthResponse,
     ErrorResponse,
     CompanyType,
-    ExtractedFields,
-    CommonFields
 )
 from .model import ocr_model
 from .database import db_client
+from .postprocess import build_output_schema
 from .utils import (
     decode_base64_image,
     save_temp_image,
@@ -44,7 +43,7 @@ async def health_check():
     )
 
 
-@router.post("/ocr", response_model=OCRResponse)
+@router.post("/ocr", response_model=StructuredOCRResponse)
 async def process_ocr(request: OCRRequest):
     """
     OCR 처리 엔드포인트 (JSON 요청)
@@ -85,21 +84,12 @@ async def process_ocr(request: OCRRequest):
 
         processing_time = (time.time() - start_time) * 1000  # ms
 
-        # 응답 구성
-        extracted = result.get("extracted_fields", {})
-        common_data = extracted.get("common", {})
-        custom_data = extracted.get("custom", {})
+        raw_text = result.get("raw_text", "")
+        payload = build_output_schema(raw_text)
+        if request.company_type and request.company_type.value != "other":
+            payload["service_type"] = request.company_type.value
 
-        response = OCRResponse(
-            company_type=request.company_type,
-            raw_text=result.get("raw_text", ""),
-            extracted_fields=ExtractedFields(
-                common=CommonFields(**common_data) if common_data else CommonFields(),
-                custom=custom_data
-            ),
-            confidence=result.get("confidence", 0.5),
-            processing_time_ms=round(processing_time, 2)
-        )
+        response = StructuredOCRResponse(**payload)
 
         # DB 저장 (연결되어 있는 경우)
         if db_client.is_connected:
@@ -117,7 +107,7 @@ async def process_ocr(request: OCRRequest):
             cleanup_temp_file(temp_file)
 
 
-@router.post("/ocr/upload", response_model=OCRResponse)
+@router.post("/ocr/upload", response_model=StructuredOCRResponse)
 async def process_ocr_upload(
     file: UploadFile = File(...),
     company_type: CompanyType = Form(default=CompanyType.OTHER),
@@ -157,21 +147,12 @@ async def process_ocr_upload(
         result = ocr_model.extract_text(image_path=temp_file, custom_prompt=custom_prompt)
         processing_time = (time.time() - start_time) * 1000
 
-        # 응답 구성
-        extracted = result.get("extracted_fields", {})
-        common_data = extracted.get("common", {})
-        custom_data = extracted.get("custom", {})
+        raw_text = result.get("raw_text", "")
+        payload = build_output_schema(raw_text)
+        if company_type and company_type.value != "other":
+            payload["service_type"] = company_type.value
 
-        response = OCRResponse(
-            company_type=company_type,
-            raw_text=result.get("raw_text", ""),
-            extracted_fields=ExtractedFields(
-                common=CommonFields(**common_data) if common_data else CommonFields(),
-                custom=custom_data
-            ),
-            confidence=result.get("confidence", 0.5),
-            processing_time_ms=round(processing_time, 2)
-        )
+        response = StructuredOCRResponse(**payload)
 
         # DB 저장
         if db_client.is_connected:
