@@ -1,6 +1,7 @@
 import re
 from statistics import median
 from typing import Dict, Any, List
+import json
 
 
 def _normalize_text(text: str) -> Dict[str, Any]:
@@ -10,6 +11,32 @@ def _normalize_text(text: str) -> Dict[str, Any]:
     cleaned = re.sub(r"\s+", " ", joined).strip()
     full_text = "\n".join(lines).strip()
     return {"cleaned": cleaned, "lines": lines, "full_text": full_text}
+
+
+def _coerce_raw_text(raw_text: str) -> str:
+    """Extract raw_text if the model returned a JSON string."""
+    text = raw_text.strip()
+    if not text.startswith("{"):
+        return raw_text
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        match = re.search(r'"raw_text"\s*:\s*"((?:\\\\.|[^"\\\\])*)"', text, re.S)
+        if not match:
+            marker = '"raw_text": "'
+            idx = text.find(marker)
+            if idx == -1:
+                return raw_text
+            extracted = text[idx + len(marker):]
+            extracted = re.sub(r'"\s*}\s*$', "", extracted, flags=re.S)
+            return extracted
+        try:
+            return json.loads(f"\"{match.group(1)}\"")
+        except Exception:
+            return match.group(1)
+    if isinstance(parsed, dict) and isinstance(parsed.get("raw_text"), str):
+        return parsed["raw_text"]
+    return raw_text
 
 
 def _detect_sections(lines: List[str]) -> Dict[str, str]:
@@ -38,6 +65,12 @@ def _detect_sections(lines: List[str]) -> Dict[str, str]:
 
 def _extract_business_name(lines: List[str]) -> str | None:
     for line in lines:
+        m = re.search(r"기본 정보[:\s]*([^/]+)", line)
+        if m:
+            return m.group(1).strip()
+        m = re.search(r"^(.+?)\\s*회원가입\\s*계약서", line)
+        if m:
+            return m.group(1).strip()
         m = re.search(r"(상호|사업장|시설명|학원명|업체명)[:\s]+(.+)", line)
         if m:
             return m.group(2).strip()
@@ -55,7 +88,10 @@ def _infer_service_type(text: str) -> str:
 
 
 def _parse_duration_days(text: str) -> int | None:
-    m = re.search(r"(\\d{4}[./-]\\d{1,2}[./-]\\d{1,2})\\s*[-~]\\s*(\\d{4}[./-]\\d{1,2}[./-]\\d{1,2})", text)
+    m = re.search(r"(\d+)\s*일\s*이용", text)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"(\d{4}[./-]\d{1,2}[./-]\d{1,2})\s*[-~]\s*(\d{4}[./-]\d{1,2}[./-]\d{1,2})", text)
     if m:
         try:
             start = [int(x) for x in re.split(r"[./-]", m.group(1))]
@@ -64,27 +100,31 @@ def _parse_duration_days(text: str) -> int | None:
             return (date(end[0], end[1], end[2]) - date(start[0], start[1], start[2])).days + 1
         except Exception:
             pass
-    m = re.search(r"(\\d+)\\s*년", text)
+    m = re.search(r"(\d+)\s*년", text)
     if m:
         return int(m.group(1)) * 365
-    m = re.search(r"(\\d+)\\s*개월", text)
+    m = re.search(r"(\d+)\s*개월", text)
     if m:
         return int(m.group(1)) * 30
-    m = re.search(r"(\\d+)\\s*일", text)
+    m = re.search(r"(\d+)\s*일", text)
     if m:
         return int(m.group(1))
     return None
 
 
 def _parse_amount_krw(text: str) -> int | None:
-    amounts = [int(a.replace(",", "")) for a in re.findall(r"(\\d[\\d,]{2,})\\s*원", text)]
+    amounts = [int(a.replace(",", "")) for a in re.findall(r"(\d[\d,]{2,})\s*원", text)]
     return max(amounts) if amounts else None
 
 
 def _parse_eth_ratio(text: str) -> Dict[str, int | None]:
-    m = re.search(r"(\\d{1,2})\\s*[:/]\\s*(\\d{1,2})", text)
+    m = re.search(r"비즈니스\s*(\d{1,3})\s*%", text)
+    n = re.search(r"에스크로\s*(\d{1,3})\s*%", text)
+    if m and n:
+        return {"business": int(m.group(1)), "escrow": int(n.group(1))}
+    m = re.search(r"(비율|ratio|ETH)\s*[:\s]*(\d{1,2})\s*[:/]\s*(\d{1,2})", text, re.IGNORECASE)
     if m:
-        return {"business": int(m.group(1)), "escrow": int(m.group(2))}
+        return {"business": int(m.group(2)), "escrow": int(m.group(3))}
     return {"business": None, "escrow": None}
 
 
@@ -95,13 +135,13 @@ def _parse_refund_rules(lines: List[str]) -> List[Dict[str, int]]:
             continue
         days = None
         percent = None
-        m = re.search(r"(\\d+)\\s*일", line)
+        m = re.search(r"(\d+)\s*일", line)
         if m:
             days = int(m.group(1))
-        m = re.search(r"(\\d+)\\s*개월", line)
+        m = re.search(r"(\d+)\s*개월", line)
         if m and days is None:
             days = int(m.group(1)) * 30
-        m = re.search(r"(\\d+)\\s*%", line)
+        m = re.search(r"(\d+)\s*%", line)
         if m:
             percent = int(m.group(1))
         if percent is None:
@@ -115,7 +155,7 @@ def _parse_refund_rules(lines: List[str]) -> List[Dict[str, int]]:
 
 
 def _parse_protection_days(text: str, refund_rules: List[Dict[str, int]]) -> int | None:
-    m = re.search(r"보호\\s*기간[:\\s]*(\\d+)\\s*일", text)
+    m = re.search(r"보호\s*기간[:\s]*(\d+)\s*일", text)
     if m:
         return int(m.group(1))
     if refund_rules:
@@ -124,7 +164,7 @@ def _parse_protection_days(text: str, refund_rules: List[Dict[str, int]]) -> int
 
 
 def build_output_schema(raw_text: str) -> Dict[str, Any]:
-    normalized = _normalize_text(raw_text)
+    normalized = _normalize_text(_coerce_raw_text(raw_text))
     cleaned = normalized["cleaned"]
     lines = normalized["lines"]
     full_text = normalized["full_text"]

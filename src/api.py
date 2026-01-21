@@ -20,7 +20,9 @@ from .utils import (
     cleanup_temp_file,
     validate_image_extension,
     validate_image_size,
-    resize_image_if_needed
+    resize_image_if_needed,
+    is_pdf_bytes,
+    convert_pdf_bytes_to_image
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,9 @@ async def process_ocr(request: OCRRequest):
             image_bytes, error = decode_base64_image(request.image_base64)
             if error:
                 raise HTTPException(status_code=400, detail=error)
+
+            if is_pdf_bytes(image_bytes):
+                image_bytes = convert_pdf_bytes_to_image(image_bytes)
 
             # 이미지 리사이즈 (필요 시)
             image_bytes = resize_image_if_needed(image_bytes)
@@ -132,6 +137,9 @@ async def process_ocr_upload(
     try:
         # 파일 읽기
         image_bytes = await file.read()
+
+        if file.filename and file.filename.lower().endswith(".pdf") or is_pdf_bytes(image_bytes):
+            image_bytes = convert_pdf_bytes_to_image(image_bytes)
 
         if not validate_image_size(len(image_bytes)):
             raise HTTPException(status_code=400, detail="파일 크기가 너무 큽니다.")

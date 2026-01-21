@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional, Tuple
 from PIL import Image
+import subprocess
 import logging
 
 from config.settings import settings
@@ -47,6 +48,48 @@ def decode_base64_image(base64_string: str) -> Tuple[Optional[bytes], Optional[s
     except Exception as e:
         logger.error(f"Base64 디코딩 실패: {e}")
         return None, f"Base64 디코딩 실패: {str(e)}"
+
+
+def is_pdf_bytes(data: bytes) -> bool:
+    return data[:4] == b"%PDF"
+
+
+def convert_pdf_bytes_to_image(pdf_bytes: bytes, dpi: int = 200) -> bytes:
+    """Convert first page of PDF to PNG bytes using pdftoppm."""
+    tmp_pdf = None
+    tmp_png = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as pdf_file:
+            pdf_file.write(pdf_bytes)
+            tmp_pdf = pdf_file.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as png_file:
+            tmp_png = png_file.name
+        prefix = tmp_png[:-4]
+        subprocess.run(
+            [
+                "pdftoppm",
+                "-f",
+                "1",
+                "-l",
+                "1",
+                "-png",
+                "-singlefile",
+                "-r",
+                str(dpi),
+                tmp_pdf,
+                prefix,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        with open(tmp_png, "rb") as f:
+            return f.read()
+    finally:
+        if tmp_pdf and os.path.exists(tmp_pdf):
+            os.remove(tmp_pdf)
+        if tmp_png and os.path.exists(tmp_png):
+            os.remove(tmp_png)
 
 
 def save_temp_image(image_bytes: bytes, suffix: str = ".jpg") -> Optional[str]:
